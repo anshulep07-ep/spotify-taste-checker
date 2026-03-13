@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotify Taste Checker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0a0a0a;
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+  }
+  h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+  .subtitle { color: #888; font-size: 1rem; margin-bottom: 2rem; }
+  .card {
+    background: #141414;
+    border: 1px solid #222;
+    border-radius: 16px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 480px;
+    margin-bottom: 1rem;
+  }
+  label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.4rem; }
+  input {
+    width: 100%;
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    color: #fff;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    outline: none;
+  }
+  input:focus { border-color: #1DB954; }
+  .btn {
+    width: 100%;
+    padding: 0.85rem;
+    border-radius: 50px;
+    border: none;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-spotify { background: #1DB954; color: #000; }
+  .btn-analyse { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .status { text-align: center; padding: 1rem; color: #888; font-size: 0.9rem; }
+  .result-card {
+    background: #141414;
+    border: 1px solid #1DB954;
+    border-radius: 20px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 480px;
+    display: none;
+  }
+  .result-card.show { display: block; }
+  .grade-circle {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1DB954, #00b4d8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; font-weight: 800;
+    margin: 0 auto 1rem;
+  }
+  .vibe-score { text-align: center; font-size: 3rem; font-weight: 800; color: #1DB954; margin-bottom: 0.25rem; }
+  .vibe-label { text-align: center; color: #888; font-size: 0.85rem; margin-bottom: 1.5rem; }
+  .archetype { text-align: center; font-size: 1.3rem; font-weight: 700; margin-bottom: 0.5rem; }
+  .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: #555; margin-bottom: 0.5rem; margin-top: 1.25rem; }
+  .roast-text { color: #ccc; line-height: 1.7; font-size: 0.95rem; border-left: 2px solid #1DB954; padding-left: 1rem; }
+  .genre-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+  .pill {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 20px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    color: #aaa;
+  }
+  .top-items { margin-top: 0.5rem; }
+  .top-item { padding: 0.4rem 0; border-bottom: 1px solid #1a1a1a; font-size: 0.9rem; color: #ddd; }
+  .top-item:last-child { border-bottom: none; }
+  .share-btn {
+    width: 100%;
+    margin-top: 1.5rem;
+    padding: 0.75rem;
+    background: transparent;
+    border: 1px solid #333;
+    border-radius: 50px;
+    color: #888;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .loader { display: none; text-align: center; padding: 2rem; }
+  .loader.show { display: block; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid #222;
+    border-top-color: #1DB954;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { color: #ff4444; background: #1a0000; border: 1px solid #440000; border-radius: 8px; padding: 1rem; font-size: 0.9rem; margin-top: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>🎵 Taste Check</h1>
+<p class="subtitle">Let AI roast your music personality</p>
+
+<div class="card" id="setup-card">
+  <label>Anthropic API Key</label>
+  <input type="password" id="api-key" placeholder="sk-ant-..." />
+  <label>Spotify Client ID</label>
+  <input type="text" id="client-id" placeholder="your spotify client id" />
+  <button class="btn btn-spotify" onclick="connectSpotify()">Connect Spotify</button>
+</div>
+
+<div class="card" id="analyse-card" style="display:none; text-align:center;">
+  <p style="color:#1DB954; margin-bottom:1rem;">✓ Spotify connected!</p>
+  <button class="btn btn-analyse" id="analyse-btn" onclick="analyse()">Analyse My Taste</button>
+</div>
+
+<div class="loader" id="loader">
+  <div class="spinner"></div>
+  <p style="color:#888">Claude is judging you...</p>
+</div>
+
+<div id="error-box"></div>
+
+<div class="result-card" id="result">
+  <div class="grade-circle" id="res-grade">?</div>
+  <div class="vibe-score" id="res-score">0</div>
+  <div class="vibe-label">VIBE SCORE / 100</div>
+  <div class="archetype" id="res-archetype"></div>
+
+  <div class="section-title">The Roast</div>
+  <p class="roast-text" id="res-roast"></p>
+
+  <div class="section-title">Genre DNA</div>
+  <div class="genre-pills" id="res-genres"></div>
+
+  <div class="section-title">Your Top Artists</div>
+  <div class="top-items" id="res-artists"></div>
+
+  <div class="section-title">Your Top Tracks</div>
+  <div class="top-items" id="res-tracks"></div>
+
+  <button class="share-btn" onclick="share()">Share My Results</button>
+</div>
+
+<script>
+const SCOPES = 'user-top-read';
+const REDIRECT = window.location.href.split('?')[0].split('#')[0];
+let token = null;
+
+window.onload = () => {
+  const saved_key = localStorage.getItem('anthropic_key');
+  const saved_cid = localStorage.getItem('spotify_cid');
+  if (saved_key) document.getElementById('api-key').value = saved_key;
+  if (saved_cid) document.getElementById('client-id').value = saved_cid;
+
+  const hash = window.location.hash.substring(1);
+  const params = new URLSearchParams(hash);
+  if (params.get('access_token')) {
+    token = params.get('access_token');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.getElementById('setup-card').style.display = 'none';
+    document.getElementById('analyse-card').style.display = 'block';
+  }
+};
+
+function connectSpotify() {
+  const key = document.getElementById('api-key').value.trim();
+  const cid = document.getElementById('client-id').value.trim();
+  if (!key || !cid) { showError('Please enter both your Anthropic API key and Spotify Client ID.'); return; }
+  localStorage.setItem('anthropic_key', key);
+  localStorage.setItem('spotify_cid', cid);
+  window.location = `https://accounts.spotify.com/authorize?client_id=${cid}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT)}&scope=${encodeURIComponent(SCOPES)}`;
+}
+
+async function fetchSpotify(endpoint) {
+  const res = await fetch(`https://api.spotify.com/v1/me/${endpoint}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Spotify API error: ' + res.status);
+  return res.json();
+}
+
+async function analyse() {
+  document.getElementById('analyse-card').style.display = 'none';
+  document.getElementById('loader').classList.add('show');
+  document.getElementById('error-box').innerHTML = '';
+  document.getElementById('result').classList.remove('show');
+
+  try {
+    const [artistsData, tracksData] = await Promise.all([
+      fetchSpotify('top/artists?limit=20&time_range=medium_term'),
+      fetchSpotify('top/tracks?limit=20&time_range=medium_term')
+    ]);
+
+    const artists = artistsData.items.map(a => a.name);
+    const tracks = tracksData.items.map(t => `${t.name} by ${t.artists[0].name}`);
+    const genres = [...new Set(artistsData.items.flatMap(a => a.genres))].slice(0, 15);
+
+    const prompt = `You are a brutal, witty music critic AI. Analyse this Spotify listening data and respond ONLY with valid JSON, no markdown, no extra text.
+
+Top Artists: ${artists.join(', ')}
+Top Tracks: ${tracks.slice(0,10).join(', ')}
+Genres: ${genres.join(', ')}
+
+Return this exact JSON:
+{
+  "grade": "S/A/B/C/D/F",
+  "vibe_score": number_0_to_100,
+  "archetype": "2-4 word music personality type",
+  "roast": "2-3 sentences savage but funny roast of their music taste",
+  "genre_dna": ["up to 5 genre labels"],
+  "verdict": "one punchy sentence overall verdict"
+}`;
+
+    const apiKey = localStorage.getItem('anthropic_key');
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || 'Claude API error');
+    }
+
+    const data = await resp.json();
+    const raw = data.content[0].text.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(raw);
+
+    document.getElementById('loader').classList.remove('show');
+    renderResult(result, artists, tracks);
+
+  } catch (e) {
+    document.getElementById('loader').classList.remove('show');
+    document.getElementById('analyse-card').style.display = 'block';
+    showError(e.message);
+  }
+}
+
+function renderResult(r, artists, tracks) {
+  document.getElementById('res-grade').textContent = r.grade;
+  document.getElementById('res-score').textContent = r.vibe_score;
+  document.getElementById('res-archetype').textContent = r.archetype;
+  document.getElementById('res-roast').textContent = r.roast;
+
+  document.getElementById('res-genres').innerHTML = r.genre_dna
+    .map(g => `<span class="pill">${g}</span>`).join('');
+
+  document.getElementById('res-artists').innerHTML = artists.slice(0,5)
+    .map((a,i) => `<div class="top-item">${i+1}. ${a}</div>`).join('');
+
+  document.getElementById('res-tracks').innerHTML = tracks.slice(0,5)
+    .map((t,i) => `<div class="top-item">${i+1}. ${t}</div>`).join('');
+
+  document.getElementById('result').classList.add('show');
+  document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
+}
+
+function share() {
+  const score = document.getElementById('res-score').textContent;
+  const archetype = document.getElementById('res-archetype').textContent;
+  const text = `My Spotify Taste Check: ${archetype} — Vibe Score ${score}/100 🎵`;
+  if (navigator.share) {
+    navigator.share({ title: 'My Taste Check', text, url: window.location.href });
+  } else {
+    navigator.clipboard.writeText(text + '\n' + window.location.href);
+    alert('Copied to clipboard!');
+  }
+}
+
+function showError(msg) {
+  document.getElementById('error-box').innerHTML = `<div class="error">Error: ${msg}</div>`;
+}
+</script>
+</body>
+</html>

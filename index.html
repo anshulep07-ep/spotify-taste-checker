@@ -112,7 +112,7 @@
     margin: 0 auto 1rem;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .error { color: #ff4444; background: #1a0000; border: 1px solid #440000; border-radius: 8px; padding: 1rem; font-size: 0.9rem; margin-top: 1rem; }
+  .error { color: #ff4444; background: #1a0000; border: 1px solid #440000; border-radius: 8px; padding: 1rem; font-size: 0.9rem; margin-top: 1rem; max-width: 480px; width: 100%; }
 </style>
 </head>
 <body>
@@ -164,34 +164,77 @@
 <script>
 const SCOPES = 'user-top-read';
 const REDIRECT = window.location.href.split('?')[0].split('#')[0];
-let token = null;
 
-window.onload = () => {
+function generateRandom(len) {
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+
+async function sha256(plain) {
+  const enc = new TextEncoder().encode(plain);
+  const hash = await crypto.subtle.digest('SHA-256', enc);
+  return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+
+window.onload = async () => {
   const saved_key = localStorage.getItem('anthropic_key');
   const saved_cid = localStorage.getItem('spotify_cid');
   if (saved_key) document.getElementById('api-key').value = saved_key;
   if (saved_cid) document.getElementById('client-id').value = saved_cid;
 
-  const hash = window.location.hash.substring(1);
-  const params = new URLSearchParams(hash);
-  if (params.get('access_token')) {
-    token = params.get('access_token');
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (code) {
     window.history.replaceState({}, document.title, window.location.pathname);
-    document.getElementById('setup-card').style.display = 'none';
-    document.getElementById('analyse-card').style.display = 'block';
+    await exchangeToken(code);
   }
 };
 
-function connectSpotify() {
+async function connectSpotify() {
   const key = document.getElementById('api-key').value.trim();
   const cid = document.getElementById('client-id').value.trim();
   if (!key || !cid) { showError('Please enter both your Anthropic API key and Spotify Client ID.'); return; }
   localStorage.setItem('anthropic_key', key);
   localStorage.setItem('spotify_cid', cid);
-  window.location = `https://accounts.spotify.com/authorize?client_id=${cid}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT)}&scope=${encodeURIComponent(SCOPES)}`;
+
+  const verifier = generateRandom(64);
+  const challenge = await sha256(verifier);
+  localStorage.setItem('pkce_verifier', verifier);
+
+  const url = new URL('https://accounts.spotify.com/authorize');
+  url.searchParams.set('client_id', cid);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('redirect_uri', REDIRECT);
+  url.searchParams.set('scope', SCOPES);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('code_challenge', challenge);
+  window.location = url.toString();
+}
+
+async function exchangeToken(code) {
+  const verifier = localStorage.getItem('pkce_verifier');
+  const cid = localStorage.getItem('spotify_cid');
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT,
+      client_id: cid,
+      code_verifier: verifier
+    })
+  });
+  const data = await res.json();
+  if (!data.access_token) { showError('Token exchange failed: ' + JSON.stringify(data)); return; }
+  localStorage.setItem('spotify_token', data.access_token);
+  document.getElementById('setup-card').style.display = 'none';
+  document.getElementById('analyse-card').style.display = 'block';
 }
 
 async function fetchSpotify(endpoint) {
+  const token = localStorage.getItem('spotify_token');
   const res = await fetch(`https://api.spotify.com/v1/me/${endpoint}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -223,8 +266,8 @@ Genres: ${genres.join(', ')}
 
 Return this exact JSON:
 {
-  "grade": "S/A/B/C/D/F",
-  "vibe_score": number_0_to_100,
+  "grade": "S or A or B or C or D or F",
+  "vibe_score": number between 0 and 100,
   "archetype": "2-4 word music personality type",
   "roast": "2-3 sentences savage but funny roast of their music taste",
   "genre_dna": ["up to 5 genre labels"],
@@ -271,16 +314,9 @@ function renderResult(r, artists, tracks) {
   document.getElementById('res-score').textContent = r.vibe_score;
   document.getElementById('res-archetype').textContent = r.archetype;
   document.getElementById('res-roast').textContent = r.roast;
-
-  document.getElementById('res-genres').innerHTML = r.genre_dna
-    .map(g => `<span class="pill">${g}</span>`).join('');
-
-  document.getElementById('res-artists').innerHTML = artists.slice(0,5)
-    .map((a,i) => `<div class="top-item">${i+1}. ${a}</div>`).join('');
-
-  document.getElementById('res-tracks').innerHTML = tracks.slice(0,5)
-    .map((t,i) => `<div class="top-item">${i+1}. ${t}</div>`).join('');
-
+  document.getElementById('res-genres').innerHTML = r.genre_dna.map(g => `<span class="pill">${g}</span>`).join('');
+  document.getElementById('res-artists').innerHTML = artists.slice(0,5).map((a,i) => `<div class="top-item">${i+1}. ${a}</div>`).join('');
+  document.getElementById('res-tracks').innerHTML = tracks.slice(0,5).map((t,i) => `<div class="top-item">${i+1}. ${t}</div>`).join('');
   document.getElementById('result').classList.add('show');
   document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
 }
